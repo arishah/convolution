@@ -1,26 +1,23 @@
-#![feature(linked_list_remove)]   // Need nightly build of the Rust compiler
+#![feature(linked_list_remove)]
 use std::cmp::min;
-//use std::f64::sqrt;
-use std::env;
 use std::collections::LinkedList;
+use std::env;
 
-const n: usize = 4;
-const k: usize = 2;
+const N: usize = 128;
+const K: usize = 3;
 
 static mut GLOBAL_DMC: f64 = 0.0;
 
-
 unsafe fn update_dmc(sampler: &mut LinkedList<u64>, addr_ptr: *const f32) {
-    let mut addr = addr_ptr as u64;
+    let addr = addr_ptr as u64;
 
-    let mut pos:usize = 0;
+    let mut pos: usize = 0;
     let mut it_prev = sampler.iter_mut().peekable();
     while let Some(val) = it_prev.next() {
         if *val == addr {
             it_prev.next();
-            GLOBAL_DMC += (pos as f64).sqrt() ;
-    println!("sub: {}", pos );
-    break;
+            GLOBAL_DMC += (pos as f64).sqrt();
+            break;
         }
         pos += 1;
     }
@@ -30,32 +27,28 @@ unsafe fn update_dmc(sampler: &mut LinkedList<u64>, addr_ptr: *const f32) {
     sampler.push_front(addr);
 }
 
-
-fn conv2d(I: &mut [f32], K: &mut [f32], R: &mut [f32], c: usize, batch_sz: usize) {
+fn conv2d(image_i: &mut [f32], image_k: &mut [f32], result: &mut [f32], c: usize, batch_sz: usize) {
     let num_passes = (c as f64 / batch_sz as f64).ceil() as usize;
     let mut sampler: LinkedList<u64> = LinkedList::new();
 
     for p in 0..num_passes {
-        for i in 0..(n - k + 1) {
-            for j in 0..(n - k + 1) {
+        for i in 0..(N - K + 1) {
+            for j in 0..(N - K + 1) {
                 let mut sum = 0.0;
                 for l in (p * batch_sz)..min((p + 1) * batch_sz, c) {
-                    for y in 0..k {
-                        for x in 0..k {
-                            sum += K[y * k + x] * I[((i + y) * n + (j + x)) * c + l];
+                    for y in 0..K {
+                        for x in 0..K {
+                            sum += image_k[y * K + x] * image_i[((i + y) * N + (j + x)) * c + l];
                             unsafe {
-                                println!("ptr: K[{}]", y * k + x );
-                                update_dmc(&mut sampler, &K[y * k + x]);
-                                println!("ptr: I[{}]", ((i + y) * n + (j + x)) * c + l );
-                                update_dmc(&mut sampler, &I[((i + y) * n + (j + x)) * c + l]);
+                                update_dmc(&mut sampler, &image_k[y * K + x]);
+                                update_dmc(&mut sampler, &image_i[((i + y) * N + (j + x)) * c + l]);
                             }
                         }
                     }
                 }
-                R[i * n + j] += sum;
+                result[i * N + j] += sum;
                 unsafe {
-                    println!("ptr: R[{}]", i * n + j);
-                    update_dmc(&mut sampler, &R[i * n + j]);
+                    update_dmc(&mut sampler, &result[i * N + j]);
                 }
             }
         }
@@ -68,12 +61,16 @@ fn main() {
 
     let channels = args[1].parse::<usize>().unwrap();
     let batch_sz: i32 = args[2].parse::<i32>().unwrap();
-    let batch_sz = if batch_sz == -1 { channels as i32 } else { batch_sz as i32 };
+    let batch_sz = if batch_sz == -1 {
+        channels as i32
+    } else {
+        batch_sz as i32
+    };
 
-    let mut I = vec![0.0; n * n * channels];
-    let mut R = vec![0.0; n * n];
-    let mut K = vec![0.0; k * k];
-    conv2d(&mut I, &mut K, &mut R, channels, batch_sz as usize);
+    let mut image_i = vec![0.0; N * N * channels];
+    let mut result = vec![0.0; N * N];
+    let mut image_k = vec![0.0; K * K];
+    conv2d(&mut image_i, &mut image_k, &mut result, channels, batch_sz as usize);
     println!("DMC: {}", unsafe { GLOBAL_DMC });
-    return ();// if R[0] < 0.0 { 1 } else { 0 };
+    return ();
 }
