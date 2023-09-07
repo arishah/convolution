@@ -86,6 +86,10 @@ fn fft(f: &mut Vec<Complex<f64>>, ln: usize, invert: bool) {
     for i in 1..n {
         if i < j {
             f.swap(i - 1, j - 1);
+            unsafe {
+                update_dmc_complex(&mut sampler, &f[i - 1]);
+                update_dmc_complex(&mut sampler, &f[j - 1]);
+            }
         }
         let mut k = half_n;
         while k < j {
