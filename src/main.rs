@@ -161,9 +161,9 @@ fn main() {
     })
     .collect();
 
-    for complex in &f {
+/*    for complex in &f {
         println!("before: {}", complex);
-    }
+    }*/
 
     fft(&mut f, len, false);
 
