@@ -2,12 +2,9 @@
 use std::cmp::min;
 use std::collections::LinkedList;
 use std::env;
-<<<<<<< HEAD
 use num_complex::Complex;
 use std::f64::consts::PI;
 use rand::Rng;
-=======
->>>>>>> c146d9b (add code)
 
 const N: usize = 128;
 const K: usize = 3;
