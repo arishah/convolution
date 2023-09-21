@@ -5,6 +5,8 @@ use std::env;
 use num_complex::Complex;
 use std::f64::consts::PI;
 use rand::Rng;
+use stack_alg_sim::olken::LRUSplay;
+use stack_alg_sim::LRU;
 
 const N: usize = 128;
 const K: usize = 3;
@@ -131,6 +133,62 @@ fn fft(f: &mut Vec<Complex<f64>>, ln: usize, invert: bool) {
     }
 }
 
+fn fft_access(f: &mut Vec<Complex<f64>>, ln: usize, invert: bool) -> f64 {
+    let n = 1 << ln;
+    let half_n = n / 2;
+    let mut j = 1;
+    let mut analyzer = LRUSplay::<usize>::new();
+    let mut dmc: f64 = 0.0;
+
+    for i in 1..n {
+        if i < j {
+            f.swap(i - 1, j - 1);
+            let mut cur = analyzer.rec_access(i-1);
+            dmc += (cur.unwrap_or(0) as f64).sqrt();
+            cur = analyzer.rec_access(j-1);
+            dmc += (cur.unwrap_or(0) as f64).sqrt();
+        }
+        let mut k = half_n;
+        while k < j {
+            j -= k;
+            k /= 2;
+        }
+        j += k;
+    }
+
+    for l in 1..=ln {
+        let k = 1 << l;
+        let half_k = k / 2;
+        let mut u = Complex::new(1.0, 0.0);
+        let mut w = Complex::from_polar(1.0, -PI / half_k as f64);
+
+        if invert {
+            w = w.conj();
+        }
+
+        for j in 1..=half_k {
+            for i in (j..=n).step_by(k) {
+                let m = i + half_k;
+                let t = f[m - 1] * u;
+                f[m - 1] = f[i - 1] - t;
+                f[i - 1] = f[i - 1] + t;
+                let mut cur = analyzer.rec_access(m-1);
+                dmc += (cur.unwrap_or(0) as f64).sqrt();
+                cur = analyzer.rec_access(i-1);
+                dmc += (cur.unwrap_or(0) as f64).sqrt();
+            }
+            u *= w;
+        }
+    }
+
+    if invert {
+        for elem in f.iter_mut() {
+            *elem /= n as f64;
+        }
+    }
+    dmc
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     let mode = args[1].parse::<String>().unwrap();
@@ -147,8 +205,10 @@ fn main() {
     let mut image_i = vec![0.0; N * N * channels];
     let mut result = vec![0.0; N * N];
     let mut image_k = vec![0.0; K * K];
+//    let dmc = conv_access(&mut image_i, &mut image_k, &mut result, channels, batch_sz as usize);
+//    println!("DMC: {}", dmc);
     conv2d(&mut image_i, &mut image_k, &mut result, channels, batch_sz as usize);
-    println!("DMC: {}", unsafe { GLOBAL_DMC });
+    println!("DMC: {}", unsafe{ GLOBAL_DMC});
     } else {
     let vec_size = args[2].parse::<usize>().unwrap();
     let len = args[3].parse::<usize>().unwrap();
@@ -161,17 +221,11 @@ fn main() {
     })
     .collect();
 
-/*    for complex in &f {
-        println!("before: {}", complex);
-    }*/
+//    fft(&mut f, len, false);
+//    println!("DMC: {}", unsafe { GLOBAL_DMC });
 
-    fft(&mut f, len, false);
-
-    println!("DMC: {}", unsafe { GLOBAL_DMC });
-
-/*     for complex in &f {
-        println!("after: {}", complex);
-    }*/
+    let dmc = fft_access(&mut f, len, false);
+    println!("DMC: {}", dmc);
 }
     return ();
 }
