@@ -1,11 +1,11 @@
 #![feature(linked_list_remove)]
-use std::cmp::min;
-use std::env;
 use num_complex::Complex;
-use std::f64::consts::PI;
 use rand::Rng;
 use stack_alg_sim::olken::LRUSplay;
 use stack_alg_sim::LRU;
+use std::cmp::min;
+use std::env;
+use std::f64::consts::PI;
 
 const N: usize = 128;
 const K: usize = 3;
@@ -14,7 +14,7 @@ static mut GLOBAL_DMC: f64 = 0.0;
 
 fn conv(image_i: &mut [f32], image_k: &mut [f32], result: &mut [f32], c: usize, batch_sz: usize) {
     let num_passes = (c as f64 / batch_sz as f64).ceil() as usize;
-    let mut analyzer: LRUSplay::<(char, usize)> = LRUSplay::<(char, usize)>::new();
+    let mut analyzer: LRUSplay<(char, usize)> = LRUSplay::<(char, usize)>::new();
 
     for p in 0..num_passes {
         for i in 0..(N - K + 1) {
@@ -49,9 +49,9 @@ fn fft_it(f: &mut Vec<Complex<f64>>, ln: usize, invert: bool) -> f64 {
     for i in 1..n {
         if i < j {
             f.swap(i - 1, j - 1);
-            let mut cur = analyzer.rec_access(i-1);
+            let mut cur = analyzer.rec_access(i - 1);
             dmc += (cur.unwrap_or(0) as f64).sqrt();
-            cur = analyzer.rec_access(j-1);
+            cur = analyzer.rec_access(j - 1);
             dmc += (cur.unwrap_or(0) as f64).sqrt();
         }
         let mut k = half_n;
@@ -78,9 +78,9 @@ fn fft_it(f: &mut Vec<Complex<f64>>, ln: usize, invert: bool) -> f64 {
                 let t = f[m - 1] * u;
                 f[m - 1] = f[i - 1] - t;
                 f[i - 1] = f[i - 1] + t;
-                let mut cur = analyzer.rec_access(m-1);
+                let mut cur = analyzer.rec_access(m - 1);
                 dmc += (cur.unwrap_or(0) as f64).sqrt();
-                cur = analyzer.rec_access(i-1);
+                cur = analyzer.rec_access(i - 1);
                 dmc += (cur.unwrap_or(0) as f64).sqrt();
             }
             u *= w;
@@ -95,7 +95,11 @@ fn fft_it(f: &mut Vec<Complex<f64>>, ln: usize, invert: bool) -> f64 {
     dmc
 }
 
-fn fft_recursive(n: usize, mut a: Vec<Complex<f64>>, analyzer: &mut LRUSplay::<(char, usize)>) -> Vec<Complex<f64>> {
+fn fft_recursive(
+    n: usize,
+    mut a: Vec<Complex<f64>>,
+    analyzer: &mut LRUSplay<(char, usize)>,
+) -> Vec<Complex<f64>> {
     if n == 1 {
         a
     } else {
@@ -152,20 +156,24 @@ fn fft_recursive(n: usize, mut a: Vec<Complex<f64>>, analyzer: &mut LRUSplay::<(
         }
 
         for k in 0..(n_half) {
-            let w: Complex<f64> = Complex::<f64>{re: 0., im:((-(2.) * std::f64::consts::PI * k as f64) / n as f64)}.exp();
+            let w: Complex<f64> = Complex::<f64> {
+                re: 0.,
+                im: ((-(2.) * std::f64::consts::PI * k as f64) / n as f64),
+            }
+            .exp();
             let t = a[k];
 
             let mut cur_a = analyzer.rec_access(('a', k));
             unsafe { GLOBAL_DMC += (cur_a.unwrap_or(0) as f64).sqrt();}
 
-            a[k] = t + w * a[k+(n /2)];
+            a[k] = t + w * a[k + (n / 2)];
 
             cur_a = analyzer.rec_access(('a', k+(n /2)));
             unsafe { GLOBAL_DMC += (cur_a.unwrap_or(0) as f64).sqrt();}
             cur_a = analyzer.rec_access(('a', k));
             unsafe { GLOBAL_DMC += (cur_a.unwrap_or(0) as f64).sqrt();}
 
-            a[k + n/2] = t - w * a[k + n/2];
+            a[k + n / 2] = t - w * a[k + n / 2];
 
             cur_a = analyzer.rec_access(('a', k+(n /2)));
             unsafe { GLOBAL_DMC += (cur_a.unwrap_or(0) as f64).sqrt();}
@@ -176,45 +184,49 @@ fn fft_recursive(n: usize, mut a: Vec<Complex<f64>>, analyzer: &mut LRUSplay::<(
     }
 }
 
-
-
 fn main() {
     let args: Vec<String> = env::args().collect();
     let mode = args[1].parse::<String>().unwrap();
 
     if mode == "conv" {
-    let channels = args[2].parse::<usize>().unwrap();
-    let batch_sz: i32 = args[3].parse::<i32>().unwrap();
-    let batch_sz = if batch_sz == -1 {
-        channels as i32
+        let channels = args[2].parse::<usize>().unwrap();
+        let batch_sz: i32 = args[3].parse::<i32>().unwrap();
+        let batch_sz = if batch_sz == -1 {
+            channels as i32
+        } else {
+            batch_sz as i32
+        };
+
+        let mut image_i = vec![0.0; N * N * channels];
+        let mut result = vec![0.0; N * N];
+        let mut image_k = vec![0.0; K * K];
+
+        conv(
+            &mut image_i,
+            &mut image_k,
+            &mut result,
+            channels,
+            batch_sz as usize,
+        );
+        println!("DMC: {}", unsafe { GLOBAL_DMC });
     } else {
-        batch_sz as i32
-    };
+        let vec_size = args[2].parse::<usize>().unwrap();
+        let len = args[3].parse::<usize>().unwrap();
+        let mut rng = rand::thread_rng();
+        let mut a: Vec<Complex<f64>> = (0..vec_size)
+            .map(|_| {
+                let real_part = rng.gen_range(-1.0..1.0);
+                let imag_part = rng.gen_range(-1.0..1.0);
+                Complex::new(real_part, imag_part)
+            })
+            .collect();
 
-    let mut image_i = vec![0.0; N * N * channels];
-    let mut result = vec![0.0; N * N];
-    let mut image_k = vec![0.0; K * K];
+        //    let dmc = fft_it(&mut a, len, false);
+        //    println!("DMC: {}", dmc);
 
-    conv(&mut image_i, &mut image_k, &mut result, channels, batch_sz as usize);
-    println!("DMC: {}", unsafe{ GLOBAL_DMC});
-    } else {
-    let vec_size = args[2].parse::<usize>().unwrap();
-    let len = args[3].parse::<usize>().unwrap();
-    let mut rng = rand::thread_rng();
-    let mut a: Vec<Complex<f64>> = (0..vec_size)
-    .map(|_| {
-        let real_part = rng.gen_range(-1.0..1.0);
-        let imag_part = rng.gen_range(-1.0..1.0);
-        Complex::new(real_part, imag_part)
-    })
-    .collect();
-
-//    let dmc = fft_it(&mut a, len, false);
-//    println!("DMC: {}", dmc);
-
-    let mut analyzer: LRUSplay::<(char, usize)> = LRUSplay::<(char, usize)>::new();
-    fft_recursive(a.len(), a, &mut analyzer);
-    println!("DMC: {}", unsafe { GLOBAL_DMC });
-}
+        let mut analyzer: LRUSplay<(char, usize)> = LRUSplay::<(char, usize)>::new();
+        fft_recursive(a.len(), a, &mut analyzer);
+        println!("DMC: {}", unsafe { GLOBAL_DMC });
+    }
     return ();
 }
