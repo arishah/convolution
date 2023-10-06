@@ -11,6 +11,7 @@ const N: usize = 128;
 const K: usize = 3;
 
 static mut GLOBAL_DMC: f64 = 0.0;
+static mut ITER: i32 = 0;
 
 fn conv(image_i: &mut [f32], image_k: &mut [f32], result: &mut [f32], c: usize, batch_sz: usize) {
     let num_passes = (c as f64 / batch_sz as f64).ceil() as usize;
@@ -98,63 +99,74 @@ fn fft_it(f: &mut Vec<Complex<f64>>, ln: usize, invert: bool) -> f64 {
 fn fft_recursive(
     n: usize,
     mut a: Vec<Complex<f64>>,
-    analyzer: &mut LRUSplay<(char, usize)>,
+    analyzer: &mut LRUSplay<(String, usize)>,
 ) -> Vec<Complex<f64>> {
     if n == 1 {
         a
     } else {
+        unsafe{ ITER+= 1;}
+        let iter: i32 = unsafe { ITER};
         let n_half = n / 2;
 
         let evens: Vec<Complex<f64>> = a.iter().step_by(2).cloned().collect();
 
-        for i in 0..n_half {
-            let cur_e = analyzer.rec_access(('a', i * 2));
+        for i in 0..(evens.len()) {
+            let a = format!("a{}", iter);
+            let cur_e = analyzer.rec_access((a, i * 2));
             unsafe { GLOBAL_DMC += (cur_e.unwrap_or(0) as f64).sqrt();}
-            let cur_e = analyzer.rec_access(('1', i));
-            unsafe { GLOBAL_DMC += (cur_e.unwrap_or(0) as f64).sqrt();}
+//            let a_1 = format!("1{}", iter);
+//            let cur_e = analyzer.rec_access((1, i));
+//           unsafe { GLOBAL_DMC += (cur_e.unwrap_or(0) as f64).sqrt();}
         }
 
         let mut f_even = fft_recursive(evens.len(), evens, analyzer);
 
-        for i in 0..n_half {
-            let cur_e = analyzer.rec_access(('2', i));
-            unsafe { GLOBAL_DMC += (cur_e.unwrap_or(0) as f64).sqrt();}
-            let cur_o = analyzer.rec_access(('e', i));
-            unsafe { GLOBAL_DMC += (cur_o.unwrap_or(0) as f64).sqrt();}
+        for i in 0..(f_even.len()) {
+//            let e_2 = format!("2{}", iter);
+//            let cur_e = analyzer.rec_access((e_2, i));
+//            unsafe { GLOBAL_DMC += (cur_e.unwrap_or(0) as f64).sqrt();}
+//            let e = format!("e{}", iter);
+//            let cur_o = analyzer.rec_access((e, i));
+//            unsafe { GLOBAL_DMC += (cur_o.unwrap_or(0) as f64).sqrt();}
         }
         let odds: Vec<Complex<f64>> = a.iter().skip(1).step_by(2).cloned().collect();
 
-        for i in 0..n_half {
-            let cur_e = analyzer.rec_access(('a', i * 2 + 1));
+        for i in 0..odds.len() {
+            let a = format!("a{}", iter);
+            let cur_e = analyzer.rec_access((a, i * 2 + 1));
             unsafe { GLOBAL_DMC += (cur_e.unwrap_or(0) as f64).sqrt();}
-            let cur_e = analyzer.rec_access(('3', i));
-            unsafe { GLOBAL_DMC += (cur_e.unwrap_or(0) as f64).sqrt();}
+//            let a_3 = format!("3{}", iter);
+//            let cur_e = analyzer.rec_access((a_3, i));
+//            unsafe { GLOBAL_DMC += (cur_e.unwrap_or(0) as f64).sqrt();}
         }
         let mut f_odd = fft_recursive(odds.len(), odds, analyzer);
 
-        for i in 0..n_half {
-            let cur_e = analyzer.rec_access(('4', i));
+        for i in 0..f_odd.len() {
+//            let cur_e = analyzer.rec_access(("4".to_string(), i));
+//            unsafe { GLOBAL_DMC += (cur_e.unwrap_or(0) as f64).sqrt();}
+//            let a = format!("o{}", iter);
+//            let cur_o = analyzer.rec_access((a, i));
+//            unsafe { GLOBAL_DMC += (cur_o.unwrap_or(0) as f64).sqrt();}
+        }
+
+        for i in 0..f_even.len() {
+            let cur_a = analyzer.rec_access((format!("a{}", iter), i));
+            unsafe { GLOBAL_DMC += (cur_a.unwrap_or(0) as f64).sqrt();}
+            let a_next = format!("a{}", iter+1);
+            let cur_e = analyzer.rec_access((a_next, i));
             unsafe { GLOBAL_DMC += (cur_e.unwrap_or(0) as f64).sqrt();}
-            let cur_o = analyzer.rec_access(('o', i));
-            unsafe { GLOBAL_DMC += (cur_o.unwrap_or(0) as f64).sqrt();}
+        }
+        for i in 0..f_odd.len() {
+            let cur_a = analyzer.rec_access((format!("a{}", iter),  f_even.len() + i + 1));
+            unsafe { GLOBAL_DMC += (cur_a.unwrap_or(0) as f64).sqrt();}
+            let a_next = format!("a{}", iter+2);
+            let cur_e = analyzer.rec_access((a_next, i));
+            unsafe { GLOBAL_DMC += (cur_e.unwrap_or(0) as f64).sqrt();}
         }
 
         f_even.append(&mut f_odd);
         a = f_even;
-
-        for i in 0..n_half {
-            let cur_o = analyzer.rec_access(('e', i));
-            unsafe { GLOBAL_DMC += (cur_o.unwrap_or(0) as f64).sqrt();}
-            let cur_e = analyzer.rec_access(('a', i));
-            unsafe { GLOBAL_DMC += (cur_e.unwrap_or(0) as f64).sqrt();}
-        }
-        for i in 0..n_half {
-            let cur_o = analyzer.rec_access(('o', i));
-            unsafe { GLOBAL_DMC += (cur_o.unwrap_or(0) as f64).sqrt();}
-            let cur_e = analyzer.rec_access(('a', n_half + i + 1));
-            unsafe { GLOBAL_DMC += (cur_e.unwrap_or(0) as f64).sqrt();}
-        }
-
+ 
         for k in 0..(n_half) {
             let w: Complex<f64> = Complex::<f64> {
                 re: 0.,
@@ -163,21 +175,25 @@ fn fft_recursive(
             .exp();
             let t = a[k];
 
-            let mut cur_a = analyzer.rec_access(('a', k));
+            let mut cur_a = analyzer.rec_access((format!("a{}", iter), k));
             unsafe { GLOBAL_DMC += (cur_a.unwrap_or(0) as f64).sqrt();}
 
             a[k] = t + w * a[k + (n / 2)];
 
-            cur_a = analyzer.rec_access(('a', k+(n /2)));
+            cur_a = analyzer.rec_access(("w".to_string(), k/n));
             unsafe { GLOBAL_DMC += (cur_a.unwrap_or(0) as f64).sqrt();}
-            cur_a = analyzer.rec_access(('a', k));
+            cur_a = analyzer.rec_access((format!("a{}", iter), k+(n /2)));
+            unsafe { GLOBAL_DMC += (cur_a.unwrap_or(0) as f64).sqrt();}
+            cur_a = analyzer.rec_access((format!("a{}", iter), k));
             unsafe { GLOBAL_DMC += (cur_a.unwrap_or(0) as f64).sqrt();}
 
             a[k + n / 2] = t - w * a[k + n / 2];
 
-            cur_a = analyzer.rec_access(('a', k+(n /2)));
+            cur_a = analyzer.rec_access(("w".to_string(), k/n));
             unsafe { GLOBAL_DMC += (cur_a.unwrap_or(0) as f64).sqrt();}
-            cur_a = analyzer.rec_access(('a', k+(n / 2)));
+            cur_a = analyzer.rec_access((format!("a{}", iter), k+(n /2)));
+            unsafe { GLOBAL_DMC += (cur_a.unwrap_or(0) as f64).sqrt();}
+            cur_a = analyzer.rec_access((format!("a{}", iter), k+(n / 2)));
             unsafe { GLOBAL_DMC += (cur_a.unwrap_or(0) as f64).sqrt();}
         }
         a
@@ -224,7 +240,7 @@ fn main() {
         //    let dmc = fft_it(&mut a, len, false);
         //    println!("DMC: {}", dmc);
 
-        let mut analyzer: LRUSplay<(char, usize)> = LRUSplay::<(char, usize)>::new();
+        let mut analyzer: LRUSplay<(String, usize)> = LRUSplay::<(String, usize)>::new();
         fft_recursive(a.len(), a, &mut analyzer);
         println!("DMC: {}", unsafe { GLOBAL_DMC });
     }
