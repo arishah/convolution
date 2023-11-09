@@ -7,6 +7,7 @@ use std::env;
 use std::f64::consts::PI;
 mod algorithm;
 use algorithm::convolution;
+use hist::Hist;
 
 //const N: usize = 128;
 //const K: usize = 3;
@@ -41,9 +42,11 @@ fn conv(N: usize, image_i: &mut [f32], K: usize, image_k: &mut [f32], result: &m
     }
 }
 */
-fn conv(n: usize, image_i: Vec<f32>, k: usize, image_k: Vec<f32>, result: &mut Vec<f32>, c: usize, batch_sz: usize) {
+fn conv(n: usize, image_i: Vec<f32>, k: usize, image_k: Vec<f32>, result: &mut Vec<f32>, c: usize, batch_sz: usize) -> f64 {
     let num_passes = (c as f64 / batch_sz as f64).ceil() as usize;
-    let mut analyzer: LRUSplay<(char, usize, usize)> = LRUSplay::<(char, usize, usize)>::new();
+    let mut analyzer: LRUSplay<(char, usize, usize, usize)> = LRUSplay::<(char, usize, usize, usize)>::new();
+
+    let mut histogram = Hist::new();
 
     for p in 0..num_passes {
         for i in 0..(n - k + 1) {
@@ -52,20 +55,23 @@ fn conv(n: usize, image_i: Vec<f32>, k: usize, image_k: Vec<f32>, result: &mut V
                 for l in (p * batch_sz)..min((p + 1) * batch_sz, c) {
                     for y in 0..k {
                         for x in 0..k {
-    //                        sum += image_k[y * K + x] * image_i[((i + y) * N + (j + x)) * c + l];
-                            let cur_k = analyzer.rec_access(('k', y, x));
-                            unsafe { GLOBAL_DMC += (cur_k.unwrap_or(0) as f64).sqrt();}
-                            let cur_i = analyzer.rec_access(('i', (i + y)* c + l, (j + x) * c + l));
-                            unsafe { GLOBAL_DMC += (cur_i.unwrap_or(0) as f64).sqrt();}
+                            let cur_k = analyzer.rec_access(('k', y, x, 0));
+                            histogram.add_dist(cur_k);
+                            let cur_i = analyzer.rec_access(('i', (i + y), (j + x), l));
+                            histogram.add_dist(cur_i);
                         }
                     }
                 }
-//                result[i * n + j] += sum;
-                let cur_i = analyzer.rec_access(('r', i, j));
-                unsafe { GLOBAL_DMC += (cur_i.unwrap_or(0) as f64).sqrt();}
+                let cur_i = analyzer.rec_access(('r', i, j, 0));
+                histogram.add_dist(cur_i);
             }
         }
     }
+    let mut hist_vec = histogram.to_vec();
+    let sum = hist_vec.iter_mut().fold(0.0, |acc, (x, y)| {
+        acc + ((*y as f64)*((x.unwrap_or(0) as f64).sqrt())) as f64
+    });
+    sum
 }
 
 fn fft_it(f: &mut Vec<Complex<f64>>, ln: usize, invert: bool) -> f64 {
@@ -248,7 +254,7 @@ fn main() {
         let mut result = vec![0.0; n * n];
         let mut image_k = vec![0.0; k * k];
 
-        conv(
+        let dmc = conv(
             n,
 //            &mut image_i,
             image_i,
@@ -259,7 +265,7 @@ fn main() {
             channels,
             batch_sz as usize,
         );
-        println!("DMC: {}", unsafe { GLOBAL_DMC });
+        println!("DMC: {}", dmc);
     } else if mode == "fft" {
         let vec_size = args[2].parse::<usize>().unwrap();
         let len = args[3].parse::<usize>().unwrap();
