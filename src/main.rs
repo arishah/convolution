@@ -295,10 +295,22 @@ fn main() {
             batch_sz as i32
         };
 
-        let mut image_i = vec![0.0; n * n * channels];
-//        let mut image_i = vec![0.0; n * n];
+        let mut rng = rand::thread_rng();
+        let mut image_i: Vec<f32> = (0..n*n*channels)
+            .map(|_| {
+                let im: f32 = rng.gen_range(0.0..25.0);
+                im
+            })
+            .collect();
+
+        let mut image_k: Vec<f32> = (0..k*k)
+            .map(|_| {
+                let im: f32 = rng.gen_range(0.0..25.0);
+                im
+            })
+            .collect();
+
         let mut result = vec![0.0; n * n];
-        let mut image_k = vec![0.0; k * k];
 
         convolution(
             n,

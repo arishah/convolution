@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 num-complex = "0.4.4"
 rand = "0.8.5"
+rayon = "1.8"
 stack_alg_sim = { path = "dace/stack_alg_sim" }
 hist = { path = "dace/hist" }
 
