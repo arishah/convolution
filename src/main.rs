@@ -5,9 +5,11 @@ use stack_alg_sim::LRU;
 use std::cmp::min;
 use std::env;
 use std::f64::consts::PI;
+use hist::Hist;
 mod algorithm;
 use algorithm::convolution;
-use hist::Hist;
+mod simulation;
+use simulation::*;
 
 //const N: usize = 128;
 //const K: usize = 3;
@@ -42,235 +44,6 @@ fn conv(N: usize, image_i: &mut [f32], K: usize, image_k: &mut [f32], result: &m
     }
 }
 */
-fn conv(
-    n: usize,
-    image_i: Vec<f32>,
-    k: usize,
-    image_k: Vec<f32>,
-    result: &mut Vec<f32>,
-    c: usize,
-    batch_sz: usize,
-) -> f64 {
-    let num_passes = (c as f64 / batch_sz as f64).ceil() as usize;
-    let mut analyzer: LRUSplay<(char, usize, usize, usize)> =
-        LRUSplay::<(char, usize, usize, usize)>::new();
-
-    let mut histogram = Hist::new();
-
-    for p in 0..num_passes {
-        for i in 0..(n - k + 1) {
-            for j in 0..(n - k + 1) {
-                let mut sum = 0.0;
-                for l in (p * batch_sz)..min((p + 1) * batch_sz, c) {
-                    for y in 0..k {
-                        for x in 0..k {
-                            let cur_k = analyzer.rec_access(('k', y, x, 0));
-                            histogram.add_dist(cur_k);
-                            let cur_i = analyzer.rec_access(('i', (i + y), (j + x), l));
-                            histogram.add_dist(cur_i);
-                        }
-                    }
-                }
-                let cur_i = analyzer.rec_access(('r', i, j, 0));
-                histogram.add_dist(cur_i);
-            }
-        }
-    }
-    let mut hist_vec = histogram.to_vec();
-    let sum = hist_vec.iter_mut().fold(0.0, |acc, (x, y)| {
-        acc + ((*y as f64) * ((x.unwrap_or(0) as f64).sqrt())) as f64
-    });
-    sum
-}
-
-fn fft_it(f: &mut Vec<Complex<f64>>, ln: usize, invert: bool) -> f64 {
-    let n = 1 << ln;
-    let half_n = n / 2;
-    let mut j = 1;
-    let mut analyzer = LRUSplay::<usize>::new();
-    let mut dmc: f64 = 0.0;
-
-    for i in 1..n {
-        if i < j {
-            f.swap(i - 1, j - 1);
-            let mut cur = analyzer.rec_access(i - 1);
-            dmc += (cur.unwrap_or(0) as f64).sqrt();
-            cur = analyzer.rec_access(j - 1);
-            dmc += (cur.unwrap_or(0) as f64).sqrt();
-        }
-        let mut k = half_n;
-        while k < j {
-            j -= k;
-            k /= 2;
-        }
-        j += k;
-    }
-
-    for l in 1..=ln {
-        let k = 1 << l;
-        let half_k = k / 2;
-        let mut u = Complex::new(1.0, 0.0);
-        let mut w = Complex::from_polar(1.0, -PI / half_k as f64);
-
-        if invert {
-            w = w.conj();
-        }
-
-        for j in 1..=half_k {
-            for i in (j..=n).step_by(k) {
-                let m = i + half_k;
-                let t = f[m - 1] * u;
-                f[m - 1] = f[i - 1] - t;
-                f[i - 1] = f[i - 1] + t;
-                let mut cur = analyzer.rec_access(m - 1);
-                dmc += (cur.unwrap_or(0) as f64).sqrt();
-                cur = analyzer.rec_access(i - 1);
-                dmc += (cur.unwrap_or(0) as f64).sqrt();
-            }
-            u *= w;
-        }
-    }
-
-    if invert {
-        for elem in f.iter_mut() {
-            *elem /= n as f64;
-        }
-    }
-    dmc
-}
-
-fn fft_recursive(
-    n: usize,
-    mut a: Vec<Complex<f64>>,
-    analyzer: &mut LRUSplay<(String, usize)>,
-) -> Vec<Complex<f64>> {
-    if n == 1 {
-        a
-    } else {
-        unsafe {
-            ITER += 1;
-        }
-        let iter: i32 = unsafe { ITER };
-        let n_half = n / 2;
-
-        let evens: Vec<Complex<f64>> = a.iter().step_by(2).cloned().collect();
-
-        for i in 0..(evens.len()) {
-            let a = format!("a{}", iter);
-            let cur_e = analyzer.rec_access((a, i * 2));
-            unsafe {
-                GLOBAL_DMC += (cur_e.unwrap_or(0) as f64).sqrt();
-            }
-            //            let a_1 = format!("1{}", iter);
-            //            let cur_e = analyzer.rec_access((1, i));
-            //           unsafe { GLOBAL_DMC += (cur_e.unwrap_or(0) as f64).sqrt();}
-        }
-
-        let mut f_even = fft_recursive(evens.len(), evens, analyzer);
-
-        //        for i in 0..(f_even.len()) {
-        //            let e_2 = format!("2{}", iter);
-        //            let cur_e = analyzer.rec_access((e_2, i));
-        //            unsafe { GLOBAL_DMC += (cur_e.unwrap_or(0) as f64).sqrt();}
-        //            let e = format!("e{}", iter);
-        //            let cur_o = analyzer.rec_access((e, i));
-        //            unsafe { GLOBAL_DMC += (cur_o.unwrap_or(0) as f64).sqrt();}
-        //       }
-        let odds: Vec<Complex<f64>> = a.iter().skip(1).step_by(2).cloned().collect();
-
-        for i in 0..odds.len() {
-            let a = format!("a{}", iter);
-            let cur_e = analyzer.rec_access((a, i * 2 + 1));
-            unsafe {
-                GLOBAL_DMC += (cur_e.unwrap_or(0) as f64).sqrt();
-            }
-            //            let a_3 = format!("3{}", iter);
-            //            let cur_e = analyzer.rec_access((a_3, i));
-            //            unsafe { GLOBAL_DMC += (cur_e.unwrap_or(0) as f64).sqrt();}
-        }
-        let mut f_odd = fft_recursive(odds.len(), odds, analyzer);
-
-        for i in 0..f_odd.len() {
-            //            let cur_e = analyzer.rec_access(("4".to_string(), i));
-            //            unsafe { GLOBAL_DMC += (cur_e.unwrap_or(0) as f64).sqrt();}
-            //            let a = format!("o{}", iter);
-            //            let cur_o = analyzer.rec_access((a, i));
-            //            unsafe { GLOBAL_DMC += (cur_o.unwrap_or(0) as f64).sqrt();}
-        }
-
-        for i in 0..f_even.len() {
-            let cur_a = analyzer.rec_access((format!("a{}", iter), i));
-            unsafe {
-                GLOBAL_DMC += (cur_a.unwrap_or(0) as f64).sqrt();
-            }
-            let a_next = format!("a{}", iter + 1);
-            let cur_e = analyzer.rec_access((a_next, i));
-            unsafe {
-                GLOBAL_DMC += (cur_e.unwrap_or(0) as f64).sqrt();
-            }
-        }
-        for i in 0..f_odd.len() {
-            let cur_a = analyzer.rec_access((format!("a{}", iter), f_even.len() + i + 1));
-            unsafe {
-                GLOBAL_DMC += (cur_a.unwrap_or(0) as f64).sqrt();
-            }
-            let a_next = format!("a{}", iter + 2);
-            let cur_e = analyzer.rec_access((a_next, i));
-            unsafe {
-                GLOBAL_DMC += (cur_e.unwrap_or(0) as f64).sqrt();
-            }
-        }
-
-        f_even.append(&mut f_odd);
-        a = f_even;
-
-        for k in 0..(n_half) {
-            let w: Complex<f64> = Complex::<f64> {
-                re: 0.,
-                im: ((-(2.) * std::f64::consts::PI * k as f64) / n as f64),
-            }
-            .exp();
-            let t = a[k];
-
-            let mut cur_a = analyzer.rec_access((format!("a{}", iter), k));
-            unsafe {
-                GLOBAL_DMC += (cur_a.unwrap_or(0) as f64).sqrt();
-            }
-
-            a[k] = t + w * a[k + (n / 2)];
-
-            cur_a = analyzer.rec_access(("w".to_string(), k / n));
-            unsafe {
-                GLOBAL_DMC += (cur_a.unwrap_or(0) as f64).sqrt();
-            }
-            cur_a = analyzer.rec_access((format!("a{}", iter), k + (n / 2)));
-            unsafe {
-                GLOBAL_DMC += (cur_a.unwrap_or(0) as f64).sqrt();
-            }
-            cur_a = analyzer.rec_access((format!("a{}", iter), k));
-            unsafe {
-                GLOBAL_DMC += (cur_a.unwrap_or(0) as f64).sqrt();
-            }
-
-            a[k + n / 2] = t - w * a[k + n / 2];
-
-            cur_a = analyzer.rec_access(("w".to_string(), k / n));
-            unsafe {
-                GLOBAL_DMC += (cur_a.unwrap_or(0) as f64).sqrt();
-            }
-            cur_a = analyzer.rec_access((format!("a{}", iter), k + (n / 2)));
-            unsafe {
-                GLOBAL_DMC += (cur_a.unwrap_or(0) as f64).sqrt();
-            }
-            cur_a = analyzer.rec_access((format!("a{}", iter), k + (n / 2)));
-            unsafe {
-                GLOBAL_DMC += (cur_a.unwrap_or(0) as f64).sqrt();
-            }
-        }
-        a
-    }
-}
-
 fn main() {
     let args: Vec<String> = env::args().collect();
     let mode = args[1].parse::<String>().unwrap();
@@ -302,7 +75,29 @@ fn main() {
             channels,
             batch_sz as usize,
         );
-        println!("DMC: {}", dmc);
+//        println!("DMC: {}", dmc);
+    } else if mode == "conv-block" {
+        let n = args[2].parse::<usize>().unwrap();
+        let k = args[3].parse::<usize>().unwrap();
+        let block_size = args[4].parse::<usize>().unwrap_or(64);
+        let channels = args[5].parse::<usize>().unwrap();
+        let batch_sz: i32 = args[6].parse::<i32>().unwrap();
+        let batch_sz = if batch_sz == -1 {
+            channels as i32
+        } else {
+            batch_sz as i32
+        };
+
+        let block_size :usize = 64;
+
+        let dmc = conv_block(
+            n,
+            k,
+            channels,
+            batch_sz as usize,
+            block_size
+        );
+//        println!("DMC: {}", dmc);
     } else if mode == "fft" {
         let vec_size = args[2].parse::<usize>().unwrap();
         let len = args[3].parse::<usize>().unwrap();
@@ -332,6 +127,7 @@ fn main() {
             batch_sz as i32
         };
 
+/*
         let mut rng = rand::thread_rng();
         let mut image_i: Vec<f32> = (0..n * n * channels)
             .map(|_| {
@@ -346,15 +142,45 @@ fn main() {
                 im
             })
             .collect();
+*/
 
-        let mut result = vec![0.0; n * n];
 
+let mut image_i: Vec<Vec<f64>> = vec![vec![6.103921, 18.088875, 24.588144, 4.452592, 8.66113, 18.30811, 12.927482, 7.5458345, 7.543391, 12.42911, 6.1582804, 9.538987, 14.501134, 19.025675, 10.325516, 15.668571, 7.245472, 6.7605405, 13.725066, 0.37198067], 
+                                    vec![20.564487, 0.71589947, 19.81746, 4.977572, 17.874912, 24.104904, 19.471487, 22.58652, 15.882486, 12.089491, 4.7557592, 18.325645, 18.374428, 10.757292, 7.985902, 11.966094, 15.375721, 17.771816, 24.581543, 3.776929], 
+                                    vec![8.7210655, 17.177826, 13.728529, 5.3876133, 3.0119987, 22.473898, 4.266429, 11.485407, 3.6971302, 1.3400793, 20.758013, 17.659027, 15.115828, 3.1386793, 15.256229, 21.415401, 14.749455, 21.25045, 5.40705, 15.212935], 
+                                    vec![3.254068, 16.391167, 9.574974, 18.995726, 7.639706, 24.372646, 9.4953985, 21.21566, 17.071888, 19.780327, 16.541893, 1.6696095, 6.9995165, 2.0852594, 21.380524, 23.546501, 7.3394446, 7.0526896, 15.451416, 5.2989125], 
+                                    vec![24.805737, 5.1555276, 4.7283144, 6.273803, 6.3921185, 10.637063, 3.4396677, 7.243514, 7.4520917, 1.7634153, 13.5028515, 9.3214035, 10.610342, 9.907881, 6.314692, 13.0663, 2.2519946, 1.3910443, 17.301708, 22.36745], 
+                                    vec![4.838443, 22.942616, 16.93202, 13.80162, 4.878214, 24.663895, 20.01187, 15.431317, 10.648963, 6.8926277, 17.156904, 13.353857, 4.793182, 18.509579, 2.954218, 2.7701676, 11.386278, 18.488153, 15.677118, 0.6226301], 
+                                    vec![15.088153, 19.581848, 13.034323, 4.3180137, 22.302998, 2.0891786, 3.8186371, 18.503452, 20.51631, 22.926495, 10.699311, 6.5155954, 6.600511, 13.007728, 20.302275, 7.2060676, 14.700887, 16.8899, 13.75655, 22.35949], 
+                                    vec![3.3265023, 10.8144045, 23.009249, 19.233671, 3.7878394, 1.4235854, 13.114971, 7.52615, 16.159122, 13.821721, 7.8401685, 3.6476283, 12.200337, 15.791813, 14.37138, 16.83721, 23.585527, 24.017488, 20.890158, 9.04831], 
+                                    vec![7.134223, 8.06728, 21.990171, 20.491346, 10.990852, 12.439808, 8.103455, 9.600788, 9.234524, 16.640265, 14.533591, 16.45421, 4.0856214, 21.991562, 1.1784762, 15.642372, 2.376947, 14.071316, 15.962559, 9.51018], 
+                                    vec![21.221212, 1.0926694, 4.6896753, 17.914883, 23.525433, 1.70843, 3.480196, 7.270828, 4.6140404, 6.2529325, 6.646624, 10.2689295, 19.918045, 6.8282366, 7.6397867, 5.5226984, 21.326416, 13.092965, 10.111019, 4.92641], 
+                                    vec![7.236928, 23.608118, 11.068937, 23.116693, 2.7492583, 15.815822, 18.415964, 24.473106, 16.328218, 16.585716, 0.38232803, 9.678682, 9.671193, 5.7083426, 16.089293, 22.761423, 0.55247843, 5.421501, 0.44960976, 19.979733], 
+                                    vec![5.6622744, 17.95765, 17.919552, 14.725152, 18.58947, 16.54581, 17.492693, 4.6750603, 8.710608, 0.10488331, 8.751572, 16.410011, 14.053288, 0.62037706, 2.5430174, 23.624393, 11.618879, 22.263607, 19.888746, 19.729027], 
+                                    vec![13.93013, 4.6450796, 16.86132, 11.601583, 9.299183, 5.856809, 20.121298, 20.051872, 22.55596, 8.549762, 24.131207, 7.4764194, 7.2917013, 19.1894, 19.179144, 19.736168, 19.049784, 13.10438, 3.9213033, 5.1112204], 
+                                    vec![6.4954014, 10.360047, 13.616312, 14.718476, 0.1829952, 24.854177, 9.4269905, 9.902999, 15.085095, 19.613998, 15.866125, 13.923466, 16.796707, 7.844913, 8.110619, 2.262786, 0.44938326, 17.311405, 19.650272, 15.890842], 
+                                    vec![11.645579, 4.746169, 0.73584914, 18.669525, 0.21314025, 3.048143, 2.3293555, 11.139697, 9.741318, 18.377485, 22.789398, 12.004984, 14.842948, 14.902202, 9.777987, 12.112323, 16.925392, 19.011152, 17.4328, 7.7059984], 
+                                    vec![8.994767, 3.1927884, 3.7446141, 5.29508, 19.386017, 18.438711, 5.256066, 17.4939, 12.848004, 8.366487, 21.284178, 13.880745, 6.956607, 7.9702883, 13.834742, 4.7498107, 10.56534, 21.762857, 4.311246, 15.030914], 
+                                    vec![15.346593, 22.349289, 4.4058027, 9.171978, 21.0767, 7.4356375, 1.22599, 7.7827873, 23.400778, 18.280634, 8.407471, 17.833609, 13.29678, 8.443848, 1.0921001, 13.348937, 3.2348423, 0.38388968, 2.9419212, 24.074762], 
+                                    vec![16.578123, 24.715603, 24.369503, 7.9167037, 24.727463, 10.096807, 22.01348, 8.341831, 9.661126, 8.780798, 16.369291, 12.322962, 21.09938, 20.228794, 24.020704, 1.255402, 10.252336, 2.3138971, 12.379649, 24.163803], 
+                                    vec![12.820411, 5.546117, 5.862525, 16.252514, 2.3257256, 16.183346, 18.997469, 19.702255, 20.060581, 23.11534, 19.076023, 24.766958, 12.527171, 19.800726, 23.690924, 4.2699485, 3.9622812, 7.9161825, 16.699568, 12.98703], 
+                                    vec![22.340939, 14.594051, 21.740469, 0.7596761, 5.141151, 3.5127342, 24.577215, 5.941424, 20.913786, 16.135412, 19.458315, 19.39443, 20.901028, 7.845873, 6.7642956, 19.093475, 21.411272, 24.767376, 23.86587, 22.506355]];
+
+let mut image_k: Vec<Vec<f64>> = vec![vec![18.059418, 13.774434, 1.8028915], 
+                                    vec![9.967682, 10.281944, 2.4214], 
+                                    vec![3.6973119, 24.533415, 24.544514]];
+
+
+
+
+//        let mut result = vec![vec![0.0; n]; n];
+        let result = 
         convolution(
             n,
             image_i,
             k,
             image_k,
-            &mut result,
+//            &mut result,
             channels,
             batch_sz as usize,
         );

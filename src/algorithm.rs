@@ -9,18 +9,18 @@ use std::time::Instant;
 
 pub fn convolution(
     n: usize,
-    image_i: Vec<f32>,
+    image_i: Vec<Vec<f64>>,
     k: usize,
-    image_k: Vec<f32>,
-    result: &mut Vec<f32>,
+    image_k: Vec<Vec<f64>>,
+//    result: Vec<Vec<f64>>,
     c: usize,
     batch_sz: usize,
-) {
+) -> Vec<Vec<f64>> {
     let now = Instant::now();
 
     let num_passes = (c as f64 / batch_sz as f64).ceil() as usize;
 
-    let res = Arc::new(Mutex::new(vec![0.0; n * n]));
+    let res = Arc::new(Mutex::new(vec![vec![0.0; n]; n]));
     let c_res = Arc::clone(&res);
 
     for p in 0..num_passes {
@@ -30,22 +30,23 @@ pub fn convolution(
                 for l in (p * batch_sz)..min((p + 1) * batch_sz, c) {
                     for y in 0..k {
                         for x in 0..k {
-                            sum +=
-                                image_k[y * k + x] * image_i[((i + y) * n + (j + x)) + l * n ^ 2];
+                            sum += image_k[y][x] * image_i[y+i + l*n][j + x + l*n];
                         }
                     }
                 }
-                c_res.lock().unwrap()[i * n + j] += sum;
+                c_res.lock().unwrap()[i][j] += sum;
             }
         });
     }
 
-    let mut r = res.lock().unwrap().clone();
-    result.copy_from_slice(&r);
+//    let mut r = res.lock().unwrap().clone();
+//    result.copy_from_slice(&r);
+    let mut result = res.lock().unwrap().clone();
 
     let elapsed = now.elapsed();
     println!(
         "n, {}, k, {}, c, {}, b, {}, t, {:.2?}",
         n, k, c, batch_sz, elapsed
     );
+    return result;
 }
