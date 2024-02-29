@@ -23,6 +23,8 @@ pub fn convolution(
     let res = Arc::new(Mutex::new(vec![vec![0.0; n]; n]));
     let c_res = Arc::clone(&res);
 
+    rayon::ThreadPoolBuilder::new().num_threads(10).build_global().unwrap();
+
     for p in 0..num_passes {
         (0..(n - k + 1)).into_par_iter().for_each(|i| {
             for j in 0..(n - k + 1) {
