@@ -52,3 +52,21 @@ pub fn convolution(
     );
     return result;
 }
+
+pub fn matrix_multi(n: Vec<Vec<i32>>, m: Vec<Vec<i32>>) -> Vec<Vec<i32>> {
+    let n_1 = n.len();
+    let n_2 = n[0].len();
+    let m_2 = m[0].len();
+
+    let mut result = vec![vec![0; m_2]; n_1];
+
+    for i in 0..n_1 {
+        for j in 0..m_2 {
+            for k in 0..n_2 {
+                result[i][j] += n[i][k] * m[k][j];
+            }
+        }
+    }
+
+    result
+}

@@ -321,3 +321,65 @@ pub fn fft_recursive(
         a
     }
 }
+
+pub fn matrix_multiplication(n_1: usize, n_2: usize, m_2: usize) -> f64 {
+
+    let mut histogram = Hist::new();
+
+    let mut analyzer: LRUSplay<(char, usize, usize)> = LRUSplay::<(char, usize, usize)>::new();
+
+    for i in 0..n_1 {
+        for j in 0..m_2 {
+            for k in 0..n_2 {
+                let cur_n = analyzer.rec_access(('n', i, k));
+                histogram.add_dist(cur_n);
+
+                let cur_m = analyzer.rec_access(('m', k, j));
+                histogram.add_dist(cur_m);
+
+                let cur_r = analyzer.rec_access(('r', i, j));
+                histogram.add_dist(cur_r);
+            }
+        }
+    }
+
+    let mut hist_vec = histogram.to_vec();
+    let dmd = hist_vec.iter_mut().fold(0.0, |acc, (x, y)| {
+        acc + ((*y as f64) * ((x.unwrap_or(0) as f64).sqrt())) as f64
+    });
+
+    dmd
+}
+
+pub fn matrix_multiplication_block(n_1: usize, n_2: usize, m_2: usize, block_size: usize) -> f64 {
+
+    let mut histogram = Hist::new();
+
+    let mut analyzer: LRUSplay<(char, usize, usize)> = LRUSplay::<(char, usize, usize)>::new();
+    let block_cap = block_size/mem::size_of::<i32>();
+
+    println!("block size: {}, element size: {}, block cap {}", block_size, mem::size_of::<i32>(), block_size/mem::size_of::<i32>());
+
+
+    for i in 0..n_1 {
+        for j in 0..m_2 {
+            for k in 0..n_2 {
+                let cur_n = analyzer.rec_access(('n', i, k));
+                histogram.add_dist(Some(cur_n.unwrap_or(0)/block_cap));
+
+                let cur_m = analyzer.rec_access(('m', k, j));
+                histogram.add_dist(Some(cur_m.unwrap_or(0)/block_cap));
+
+                let cur_r = analyzer.rec_access(('r', i, j));
+                histogram.add_dist(Some(cur_r.unwrap_or(0)/block_cap));
+            }
+        }
+    }
+
+    let mut hist_vec = histogram.to_vec();
+    let dmd = hist_vec.iter_mut().fold(0.0, |acc, (x, y)| {
+        acc + ((*y as f64) * ((x.unwrap_or(0) as f64).sqrt())) as f64
+    });
+
+    dmd
+}

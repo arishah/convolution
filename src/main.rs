@@ -7,7 +7,7 @@ use std::env;
 use std::f64::consts::PI;
 use hist::Hist;
 mod algorithm;
-use algorithm::convolution;
+use algorithm::*;
 mod simulation;
 use simulation::*;
 
@@ -88,7 +88,7 @@ fn main() {
         let mut analyzer: LRUSplay<(String, usize)> = LRUSplay::<(String, usize)>::new();
         fft_recursive(a.len(), a, &mut analyzer);
         println!("DMC: {}", unsafe { GLOBAL_DMC });
-    } else if mode == "alg" {
+    } else if mode == "conv_alg" {
         let n = args[2].parse::<usize>().unwrap();
         let k = args[3].parse::<usize>().unwrap();
         let channels = args[4].parse::<usize>().unwrap();
@@ -163,6 +163,51 @@ let mut image_k: Vec<Vec<f64>> = vec![vec![18.059418, 13.774434, 1.8028915],
             channels,
             batch_sz as usize,
         );
+    } else if mode == "mm_alg" {
+        let n_1 = args[2].parse::<usize>().unwrap();
+        let n_2 = args[3].parse::<usize>().unwrap();
+        let m_2 = args[4].parse::<usize>().unwrap();
+        
+
+        let mut rng = rand::thread_rng();
+        let mut n: Vec<Vec<i32>> = (0..n_1).map(|_| {
+            (0..n_2)
+            .map(|_| {
+                let im: i32 = rng.gen_range(0..25);
+                im
+            })
+            .collect()
+        }).collect();
+
+        let mut m: Vec<Vec<i32>> = (0..n_2).map(|_| {
+            (0..m_2)
+            .map(|_| {
+                let im: i32 = rng.gen_range(0..25);
+                im
+            })
+            .collect()
+        }).collect();
+
+        let result = matrix_multi(n, m);
+        for row in &result {
+            println!("{:?}", row);
+        }
+    } else if mode == "mm" {
+        let n_1 = args[2].parse::<usize>().unwrap();
+        let n_2 = args[3].parse::<usize>().unwrap();
+        let m_2 = args[4].parse::<usize>().unwrap();
+        
+
+        let dmd = matrix_multiplication(n_1, n_2, m_2);
+        println!("n_rows, {}, n_columns, {}, m_rows, {}, DMD, {}", n_1, n_2, m_2, dmd);
+    } else if mode == "mm_block" {
+        let n_1 = args[2].parse::<usize>().unwrap();
+        let n_2 = args[3].parse::<usize>().unwrap();
+        let m_2 = args[4].parse::<usize>().unwrap();
+        let block_size = args[5].parse::<usize>().unwrap();
+        
+        let dmd = matrix_multiplication_block(n_1, n_2, m_2, block_size);
+        println!("n_rows, {}, n_columns, {}, m_rows, {}, block_size, {}, DMD, {}", n_1, n_2, m_2, block_size, dmd);
     }
     return ();
 }
